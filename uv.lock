@@ -788,6 +788,7 @@ dependencies = [
     { name = "bm25" },
     { name = "chonkie", extra = ["code"] },
     { name = "fastembed" },
+    { name = "requests" },
 ]
 
 [package.metadata]
@@ -795,6 +796,7 @@ requires-dist = [
     { name = "bm25", specifier = ">=0.3.11" },
     { name = "chonkie", extras = ["code"], specifier = ">=1.7.0" },
     { name = "fastembed", specifier = ">=0.8.1" },
+    { name = "requests", specifier = ">=2.34.2" },
 ]
 
 [[package]]
