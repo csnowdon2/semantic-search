@@ -1,5 +1,6 @@
 from chonkie import CodeChunker, Chunk
 from fastembed import TextEmbedding
+from fastembed.rerank.cross_encoder import TextCrossEncoder
 from pathlib import Path
 import numpy as np
 import BM25
@@ -9,25 +10,33 @@ import BM25
 class EmbeddingRetrieval:
     def __init__(self, corpus: list[Chunk]):
         self.model = TextEmbedding(model='jinaai/jina-embeddings-v2-base-code')
-        self.chunks = corpus
-
         embeddings = list(self.model.embed([chunk.text for chunk in corpus]))
         self.embeddings = np.stack(embeddings)
 
     def retrieve(self, prompt: str, k=20) -> list[int]:
         v = next(self.model.embed(prompt))
         scores = v @ self.embeddings.T
-        ranking = sorted(zip(range(len(self.chunks)), scores), key=lambda x: x[1], reverse=True)[:k]
+        ranking = sorted(zip(range(len(scores)), scores), key=lambda x: x[1], reverse=True)[:k]
         return [x[0] for x in ranking]
+
 
 class BM25Retrieval:
     def __init__(self, corpus: list[Chunk]):
-        self.chunks = corpus
         self.model = BM25.index([chunk.text for chunk in corpus])
 
     def retrieve(self, prompt: str, k=20) -> list[int]:
         results = self.model.search([prompt], k=k)[0]
+        print(results)
         return [item['id']-1 for item in results]
+
+
+class Reranker:
+    def __init__(self):
+        self.model = TextCrossEncoder(model_name="BAAI/bge-reranker-base")
+
+    def rerank(self, prompt: str, ranking: list[Chunk]):
+        return self.model.rerank(prompt, [chunk.text for chunk in ranking])
+
 
 class RetrievalStack:
     def __init__(self, corpus: list[Chunk]):
@@ -38,7 +47,9 @@ class RetrievalStack:
     def retrieve(self, prompt: str, k=20):
         xs = self.embedding_model.retrieve(prompt,k)
         ys = self.BM25_model.retrieve(prompt,k)
-        print(self.reciprocal_rank_fusion(xs, ys))
+        reranked = self.reciprocal_rank_fusion(xs, ys)
+        return [self.chunks[rank] for rank in reranked]
+
 
     def reciprocal_rank_fusion(self, xs: list[int], ys: list[int]):
         k = len(xs)
@@ -79,7 +90,14 @@ files = [Path('./src/semantic_search/search.py')]
 
 corpus = chunk_documents(chunker, load_documents(files))
 
+reranker = Reranker()
 
 stack = RetrievalStack(corpus)
-stack.retrieve("inference part", k=5)
-# just did RRF, next cross-encoder
+prompt = 'inference part'
+ranking = stack.retrieve(prompt, k=5)
+new_scores = reranker.rerank(prompt, ranking)
+ranking = sorted(zip(ranking, new_scores), key=lambda x: x[1], reverse = True)
+ranking = [x[0] for x in ranking]
+for s in ranking:
+    print("CHUNK")
+    print(s)
