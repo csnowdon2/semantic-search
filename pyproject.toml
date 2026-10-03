@@ -1,0 +1,18 @@
+[project]
+name = "semantic-search"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "bm25>=0.3.11",
+    "chonkie[code]>=1.7.0",
+    "fastembed>=0.8.1",
+]
+
+[project.scripts]
+semantic-search = "semantic_search:main"
+
+[build-system]
+requires = ["uv_build>=0.12.21,<0.13.0"]
+build-backend = "uv_build"
