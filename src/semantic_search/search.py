@@ -11,7 +11,7 @@ class EmbeddingRetrieval:
         print("Embedding")
         self.model = TextEmbedding(model='jinaai/jina-embeddings-v2-base-code')
         print("Do embed")
-        embeddings = list(self.model.embed([chunk.text for chunk in corpus]))
+        embeddings = list(self.model.embed([chunk.text for chunk in corpus], batch_size = 64))
         self.embeddings = np.stack(embeddings)
         print("Done")
 
@@ -54,7 +54,7 @@ class RetrievalStack:
         self.chunks = corpus
         self.initial_rankers = [
                 EmbeddingRetrieval(corpus),
-                #BM25Retrieval(corpus),
+                BM25Retrieval(corpus),
         ]
         self.reranker = CrossEncoderReranker()
 
@@ -103,7 +103,7 @@ def chunk_documents(chunker: CodeChunker, corpus: list[str]) -> list[Chunk]:
 chunker = CodeChunker(
     language="python",
     tokenizer="character",
-    chunk_size=768,
+    chunk_size=1024,
     include_nodes=True
 )
 
@@ -132,7 +132,7 @@ stack = RetrievalStack(corpus)
 print("Done")
 
 for prompt in prompts:
-    ranking = stack.retrieve(prompt, k=5)
+    ranking = stack.retrieve(prompt, k=20)
     print(prompt)
     print(ranking[0])
     print()
