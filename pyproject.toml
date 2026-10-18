@@ -8,7 +8,8 @@ dependencies = [
     "bm25>=0.3.11",
     "chonkie[code]>=1.7.0",
     "fastembed>=0.8.1",
-    "requests>=2.34.2",
+    "uvicorn>=0.54.0",
+    "fastapi>=0.143.3",
 ]
 
 [project.scripts]

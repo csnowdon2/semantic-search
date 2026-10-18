@@ -1,71 +1,92 @@
-from chonkie import CodeChunker, Chunk
+from chonkie import Chunk
 from fastembed import TextEmbedding
 from fastembed.rerank.cross_encoder import TextCrossEncoder
-from pathlib import Path
 import numpy as np
 import BM25
 
 
 class EmbeddingRetrieval:
-    def __init__(self, corpus: list[Chunk]):
-        print("Embedding")
-        self.model = TextEmbedding(model='jinaai/jina-embeddings-v2-base-code')
+    """
+    Semantic embedding biencoder search ranker.
+    Initially, performs a semantic embedding on each text chunk.
+    To lookup, embeds the query string and finds the closest matching
+    chunk embedding.
+    """
+    def __init__(self, model_name: str, corpus: list[Chunk]):
+        self.model = TextEmbedding(model=model_name)
         print("Do embed")
-        embeddings = list(self.model.embed([chunk.text for chunk in corpus], batch_size = 64))
+        embeddings = list(self.model.embed([chunk.text for chunk in corpus], batch_size = 128))
         self.embeddings = np.stack(embeddings)
         print("Done")
 
-    def retrieve(self, prompt: str, k=20) -> list[int]:
-        v = next(self.model.embed(prompt))
+    def retrieve(self, query: str, k=20) -> list[int]:
+        v = next(self.model.embed(query))
+        # This matrix product calculates the dot product of the query
+        # embedding against each chunk embedding. Each dot product is in
+        # the range [-1,1], where higher is better.
         scores = v @ self.embeddings.T
         ranking = sorted(zip(range(len(scores)), scores), key=lambda x: x[1], reverse=True)[:k]
         return [x[0] for x in ranking]
 
 
 class BM25Retrieval:
+    """
+    BM25 Keyword-based search ranker.
+    """
     def __init__(self, corpus: list[Chunk]):
         print("BM25")
         self.model = BM25.index([chunk.text for chunk in corpus])
         print("Done")
 
-    def retrieve(self, prompt: str, k=20) -> list[int]:
-        results = self.model.search([prompt], k=k)[0]
+    def retrieve(self, query: str, k=20) -> list[int]:
+        results = self.model.search([query], k=k)[0]
         return [item['id']-1 for item in results]
 
 
 class CrossEncoderReranker:
-    def __init__(self):
+    """
+    Semantic embedding crossencoder search re-ranker.
+    More expensive but more accurate than pure semantic embedding.
+    Used to re-rank an initial guess from the cheaper models.
+    """
+    def __init__(self, model_name: str):
         print("Cross encoder")
-        self.model = TextCrossEncoder(model_name="Xenova/ms-marco-MiniLM-L-6-v2")
-        
-        #self.model = TextCrossEncoder(model_name="jinaai/jina-reranker-v1-turbo-en")
-        #self.model = TextCrossEncoder(model_name="BAAI/bge-reranker-base")
+        self.model = TextCrossEncoder(model_name=model_name)
         print("Done")
 
-    def rerank(self, prompt: str, ranking: list[Chunk]):
-        new_scores = self.model.rerank(prompt, [chunk.text for chunk in ranking])
+    def rerank(self, query: str, ranking: list[Chunk]):
+        new_scores = self.model.rerank(query, [chunk.text for chunk in ranking])
         ranking = sorted(zip(ranking, new_scores), key=lambda x: x[1], reverse = True)
         ranking = [x[0] for x in ranking]
         return ranking
 
 
 class RetrievalStack:
-    def __init__(self, corpus: list[Chunk]):
+    """
+    Composition of the ML components into a full semantic search
+    capability.
+
+    Initially, ranks the query against each chunk via semantic embedding
+    and BM25. The two rankings are combined with Reciprocal Rank Fusion.
+    The results are then re-ranked using a more expensive cross-encoder
+    ranker.
+    """
+    def __init__(self, corpus: list[Chunk], biencoder_model_name: str, crossencoder_model_name: str):
         self.chunks = corpus
         self.initial_rankers = [
-                EmbeddingRetrieval(corpus),
+                EmbeddingRetrieval(biencoder_model_name, corpus),
                 BM25Retrieval(corpus),
         ]
-        self.reranker = CrossEncoderReranker()
+        self.reranker = CrossEncoderReranker(crossencoder_model_name)
 
         self.retrieve('warmup', 5)
 
 
-    def retrieve(self, prompt: str, k=20):
-        rankings = [ranker.retrieve(prompt,k) for ranker in self.initial_rankers]
+    def retrieve(self, query: str, k=20):
+        rankings = [ranker.retrieve(query,k) for ranker in self.initial_rankers]
         reranked = self.reciprocal_rank_fusion(rankings)
         ranking = [self.chunks[rank] for rank in reranked]
-        return self.reranker.rerank(prompt, ranking)
+        return self.reranker.rerank(query, ranking)
 
 
     def reciprocal_rank_fusion(self, rankings: list[list[int]]):
@@ -84,56 +105,4 @@ class RetrievalStack:
         results = sorted(scores.items(), key=lambda x: x[1], reverse=True)
         return [r[0] for r in results]
 
-
-def load_documents(files: list[Path]) -> list[str]:
-    corpus = []
-    for file in files:
-        with open(file,'r') as f:
-            corpus.append(f.read())
-    return corpus
-
-
-def chunk_documents(chunker: CodeChunker, corpus: list[str]) -> list[Chunk]:
-    chunks = []
-    for code in corpus:
-        chunks += chunker.chunk(code)
-    return chunks
-
-
-chunker = CodeChunker(
-    language="python",
-    tokenizer="character",
-    chunk_size=1024,
-    include_nodes=True
-)
-
-#files = [Path('./src/semantic_search/search.py')]
-requests_root = Path('.venv/lib64/python3.14/site-packages/requests')
-files = list(requests_root.glob("*.py"))
-
-#for model in TextCrossEncoder.list_supported_models():
-#    print(model['model'], model['size_in_GB'])
-#exit()
-
-
-prompts = [
-        'add arbitrary HTTP header to request',
-        'connection pooling',
-        'streaming downloads', 
-        'file upload',
-        'TLS verification',
-        'chunked HTTP requests',
-        ]
-corpus = chunk_documents(chunker, load_documents(files))
-print("Chunks:", len(corpus))
-
-print("Make stack")
-stack = RetrievalStack(corpus)
-print("Done")
-
-for prompt in prompts:
-    ranking = stack.retrieve(prompt, k=20)
-    print(prompt)
-    print(ranking[0])
-    print()
 
