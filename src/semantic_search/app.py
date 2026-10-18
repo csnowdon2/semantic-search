@@ -15,8 +15,8 @@ import os
 async def lifespan(app: FastAPI):
     # Load models before starting server
     biencoder_model = os.getenv("BIENCODER_MODEL")
-    crossencoder_model =os.getenv("CROSSENCODER_MODEL")
-    code_root = Path('./src/semantic_search')
+    crossencoder_model = os.getenv("CROSSENCODER_MODEL")
+    code_root = Path(os.getenv("CODE_DIR"))
 
     corpus = load_codebase(code_root, chunk_size=256)
     app.state.search = RetrievalStack(corpus, biencoder_model, crossencoder_model)

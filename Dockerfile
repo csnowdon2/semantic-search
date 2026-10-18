@@ -9,7 +9,8 @@ ENV UV_COMPILE_BYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PATH="/app/.venv/bin:$PATH" \
     BIENCODER_MODEL="jinaai/jina-embeddings-v2-base-code" \
-    CROSSENCODER_MODEL="Xenova/ms-marco-MiniLM-L-6-v2"
+    CROSSENCODER_MODEL="Xenova/ms-marco-MiniLM-L-6-v2" \
+    CODE_DIR="/app/src/semantic_search"
 
 WORKDIR /app
 
