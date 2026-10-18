@@ -35,7 +35,6 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          target: runtime
           load: true
           tags: semantic_search:ci
           cache-from: type=gha
@@ -45,7 +44,6 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          target: runtime
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
